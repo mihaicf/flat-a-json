@@ -1,0 +1,83 @@
+%%[
+    if empty(@json) then
+        RaiseError ("@json is required", true)
+    endif
+
+    if empty(@jsonPrefix) then
+        set @jsonPrefix = "json_"
+    endif
+]%%
+
+<script runat=server>
+Platform.Load("Core","1.1.1");
+
+function isArray(obj) {
+    return Object.prototype.toString.call(obj) === '[object Array]';
+}
+
+function newVariables(obj, prefix, depth) {
+    if(depth > 10) {
+        throw new Error("Max depth exceeded!")
+    }
+
+    for (var key in obj) {
+        if (obj.hasOwnProperty(key)) {
+
+            var keyName = prefix + key;
+            var keyValue = obj[key];
+
+            if(typeof keyValue === 'object' && keyValue !== null) {
+
+                if (isArray(keyValue)) {
+
+                    Platform.Variable.SetValue(keyName + "_length", value.length)
+
+                    for (var i=0; i < keyValue.length; i++) {
+
+                        if(typeof keyValue[i] === 'object' && keyValue[i] !== null) {
+                            newVariables(keyValue[i], keyName + "_" + i + "_", depth + 1);
+                        } else {
+                            Platform.Variable.SetValue(keyName + "_" + i, keyValue[i]);
+                        }
+
+                    }
+
+                } else {
+                    newVariables(keyValue, keyName + "_", depth + 1);
+                }
+
+            } else {
+                Platform.Variable.SetValue(keyName, keyValue);
+            }
+        }
+    }
+}
+
+try {
+
+    var inJson = Platform.Variable.GetValue("@sJson");
+    var inJsonPrefix = Platform.Variable.GetValue("@sJsonPrefix");
+
+    var obj = Platform.Function.ParseJSON(inJson);
+
+    if (obj && typeof obj === 'object') {
+        newVariables (obj, inJsonPrefix, 0);
+    } else {
+        throw new Error("Invalid JSON object");
+    }
+
+} catch (e) {
+
+    Platform.Variable.SetValue("jsonError", e.message || e.toString());
+
+}
+
+</script>
+
+%%[
+    if not empty(@jsonError) then
+        RaiseError(@jsonError, true)
+    endif
+]%%
+    
+
