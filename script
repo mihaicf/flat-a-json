@@ -1,6 +1,6 @@
 %%[
     if empty(@json) then
-        RaiseError ("@json is required", true)
+        RaiseError ("Missing json in @json variable", true)
     endif
 
     if empty(@jsonPrefix) then
@@ -11,42 +11,58 @@
 <script runat=server>
 Platform.Load("Core","1.1.1");
 
+// Helper function - not actually a Polyfill - (because Array.isArray() doesn't exist in SFMC's Rhino JS engine - stuck at ES3/ES5) to check if an object is an array
 function isArray(obj) {
     return Object.prototype.toString.call(obj) === '[object Array]';
 }
 
-function newVariables(obj, prefix, depth) {
-    if(depth > 10) {
-        throw new Error("Max depth exceeded!")
-    }
+// Function to recursively set variables from a given object.
+// Params: 1. obj (the given object), 2. prefix (string to prepend to each variable name)
+function setVariables(obj, prefix, depth) {
+    depth = depth || 0;
 
+    if(depth > 10) return;
+
+    // Iterate over each property in the given object
     for (var key in obj) {
         if (obj.hasOwnProperty(key)) {
-
+            // Variable name includes the prefix and property key
             var keyName = prefix + key;
+
+            // Value associated with the key
             var keyValue = obj[key];
 
+            // If keyValue is an object or array, recurse
             if(typeof keyValue === 'object' && keyValue !== null) {
 
                 if (isArray(keyValue)) {
 
-                    Platform.Variable.SetValue(keyName + "_length", value.length)
+                    Platform.Variable.SetValue(keyName + "_length", keyValue.length);
 
+                    // If the keyValue is an array, iterate over each element
                     for (var i=0; i < keyValue.length; i++) {
 
                         if(typeof keyValue[i] === 'object' && keyValue[i] !== null) {
-                            newVariables(keyValue[i], keyName + "_" + i + "_", depth + 1);
+
+                            // If the element is an object, recurse
+                            setVariables(keyValue[i], keyName + "_" + i + "_", depth + 1);
+
                         } else {
+
+                            // If the element is a basic type, set a variable
                             Platform.Variable.SetValue(keyName + "_" + i, keyValue[i]);
+
                         }
 
                     }
 
                 } else {
-                    newVariables(keyValue, keyName + "_", depth + 1);
+                    // If the keyValue in and object, recurse
+                    setVariables(keyValue, keyName + "_", depth + 1);
                 }
 
             } else {
+                // If the keyValue is a basic type, set the value as a variable
                 Platform.Variable.SetValue(keyName, keyValue);
             }
         }
@@ -55,20 +71,23 @@ function newVariables(obj, prefix, depth) {
 
 try {
 
-    var inJson = Platform.Variable.GetValue("@sJson");
-    var inJsonPrefix = Platform.Variable.GetValue("@sJsonPrefix");
+    var inJson = Platform.Variable.GetValue("@json");
+    var inJsonPrefix = Platform.Variable.GetValue("@jsonPrefix");
 
+    // Try to parse the json string
     var obj = Platform.Function.ParseJSON(inJson);
 
+    // If parsing was successful and the parsed obj is valid, then set the variables
     if (obj && typeof obj === 'object') {
-        newVariables (obj, inJsonPrefix, 0);
+        setVariables (obj, inJsonPrefix, 0);
     } else {
         throw new Error("Invalid JSON object");
     }
 
 } catch (e) {
 
-    Platform.Variable.SetValue("jsonError", e.message || e.toString());
+    // Catch any errors occuring during parsing or variable setting
+    Platform.Variable.SetValue("@jsonError", e.message || e.toString());
 
 }
 
@@ -79,5 +98,3 @@ try {
         RaiseError(@jsonError, true)
     endif
 ]%%
-    
-
